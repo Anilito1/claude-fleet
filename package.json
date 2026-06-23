@@ -1,0 +1,112 @@
+{
+  "name": "claude-fleet",
+  "displayName": "Claude Fleet — Sessions Monitor",
+  "description": "Visualise en temps réel toutes tes sessions Claude Code et leurs sous-agents : bulles flottantes hiérarchiques, tokens et coût $ en direct, contrôle des sessions.",
+  "version": "0.1.0",
+  "publisher": "anilito1",
+  "license": "MIT",
+  "icon": "resources/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Anilito1/claude-fleet.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["claude", "claude code", "ai", "agents", "monitor", "tokens", "cost"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claudeFleet",
+          "title": "Claude Fleet",
+          "icon": "resources/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "claudeFleet": [
+        {
+          "type": "webview",
+          "id": "claudeFleet.view",
+          "name": "Fleet",
+          "icon": "resources/activity.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeFleet.openPanel",
+        "title": "Claude Fleet: Ouvrir le moniteur (plein écran)",
+        "icon": "$(window)"
+      },
+      {
+        "command": "claudeFleet.newSession",
+        "title": "Claude Fleet: Lancer une nouvelle session",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claudeFleet.refresh",
+        "title": "Claude Fleet: Rafraîchir",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "claudeFleet.openPanel", "when": "view == claudeFleet.view", "group": "navigation@1" },
+        { "command": "claudeFleet.newSession", "when": "view == claudeFleet.view", "group": "navigation@2" },
+        { "command": "claudeFleet.refresh", "when": "view == claudeFleet.view", "group": "navigation@3" }
+      ]
+    },
+    "configuration": {
+      "title": "Claude Fleet",
+      "properties": {
+        "claudeFleet.projectsDir": {
+          "type": "string",
+          "default": "",
+          "description": "Chemin du dossier des projets Claude Code. Vide = ~/.claude/projects."
+        },
+        "claudeFleet.activeWindowMinutes": {
+          "type": "number",
+          "default": 180,
+          "description": "Une session/agent modifié dans cette fenêtre (minutes) est considéré « récent » et affiché par défaut."
+        },
+        "claudeFleet.liveWindowSeconds": {
+          "type": "number",
+          "default": 30,
+          "description": "Une session/agent modifié dans cette fenêtre (secondes) est considéré « en direct » (pastille verte pulsée)."
+        },
+        "claudeFleet.pollIntervalMs": {
+          "type": "number",
+          "default": 1500,
+          "description": "Intervalle de rafraîchissement (ms) du watcher de fichiers."
+        },
+        "claudeFleet.claudeCommand": {
+          "type": "string",
+          "default": "claude",
+          "description": "Commande CLI Claude Code utilisée pour lancer / reprendre des sessions."
+        },
+        "claudeFleet.pricing": {
+          "type": "object",
+          "default": {},
+          "description": "Surcharge des tarifs ($ / 1M tokens) par famille de modèle. Ex: {\"opus\":{\"input\":15,\"output\":75,\"cacheWrite5m\":18.75,\"cacheWrite1h\":30,\"cacheRead\":1.5}}"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.2",
+    "typescript": "^5.4.0"
+  }
+}

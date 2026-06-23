@@ -1,0 +1,12 @@
+.vscode/**
+src/**
+scripts/**
+node_modules/**
+esbuild.js
+tsconfig.json
+.gitignore
+**/*.map
+.github/**
+media/screenshot*.png
+media/preview.html
+.playwright-mcp/**

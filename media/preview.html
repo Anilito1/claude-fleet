@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <link href="style.css" rel="stylesheet" />
+  <title>Claude Fleet — preview</title>
+  <style>html,body{width:1100px;height:820px}</style>
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="brand"><span class="logo"></span><span class="brand-name">Claude Fleet</span></div>
+      <div class="stats">
+        <div class="stat"><span class="stat-val" id="stat-live">0</span><span class="stat-label">en direct</span></div>
+        <div class="stat"><span class="stat-val" id="stat-tokens">0</span><span class="stat-label">tokens</span></div>
+        <div class="stat cost"><span class="stat-val" id="stat-cost">$0.00</span><span class="stat-label">coût API</span></div>
+      </div>
+      <div class="actions">
+        <button id="filter-toggle" class="ghost">Tous</button>
+        <button id="btn-new" class="primary">+ Session</button>
+      </div>
+    </header>
+    <div id="stage">
+      <svg id="links" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="bubbles"></div>
+      <div id="empty" class="empty hidden"></div>
+    </div>
+  </div>
+  <aside id="drawer" class="drawer hidden"><button id="drawer-close" class="drawer-close">×</button><div id="drawer-content"></div></aside>
+  <div id="scrim" class="scrim hidden"></div>
+
+  <script>
+    window.acquireVsCodeApi = () => ({ postMessage() {}, getState() {}, setState() {} });
+  </script>
+  <script src="main.js"></script>
+  <script>
+    const tok = (i,o,cw,cr) => ({ input:i, output:o, cacheWrite5m:cw, cacheWrite1h:0, cacheRead:cr });
+    const cost = (n) => ({ input:n*0.3, output:n*0.4, cacheWrite:n*0.25, cacheRead:n*0.05, total:n });
+    const now = Date.now();
+    const state = {
+      generatedAt: now,
+      workspaceCwd: "C:\\Users\\braun\\Desktop\\marketing-factory",
+      summary: { totalCost: 12.84, totalTokens: 4820000, liveCount: 3, sessionCount: 2, agentCount: 4 },
+      nodes: [
+        { id:"s1", kind:"session", parentId:null, title:"Refonte UI du rapport call-center + overlay client 360",
+          subtitle:"marketing-factory", model:"claude-opus-4-8", modelFamily:"opus", status:"live", working:true,
+          activity:"Edit · TabCommandesBlock.tsx", activityKind:"tool", tokens:tok(180000,42000,1900000,210000),
+          cost:cost(9.12), messageCount:84, lastTs:now-4000, startedTs:now-3600000, cwd:"C:\\Users\\braun\\Desktop\\marketing-factory",
+          gitBranch:"main", sessionId:"s1", filePath:"x", managed:true, approx:false },
+        { id:"a1", kind:"agent", parentId:"s1", title:"Analyser le timeline Magic feed", subtitle:"Explore",
+          model:"claude-haiku-4-5", modelFamily:"haiku", status:"live", working:true, activity:"Grep · customer-insights-api",
+          activityKind:"tool", tokens:tok(48000,9000,120000,30000), cost:cost(0.41), messageCount:11, lastTs:now-2000,
+          startedTs:now-300000, cwd:"C:\\Users\\braun\\Desktop\\marketing-factory", gitBranch:"main", sessionId:"s1", filePath:"x", managed:false, approx:false },
+        { id:"a2", kind:"agent", parentId:"s1", title:"Port Assistant IA en bulle flottante", subtitle:"general-purpose",
+          model:"claude-opus-4-8", modelFamily:"opus", status:"live", working:true, activity:"✷ Je structure le composant Customer360View pour le réutiliser…",
+          activityKind:"thinking", tokens:tok(96000,21000,480000,60000), cost:cost(2.30), messageCount:22, lastTs:now-9000,
+          startedTs:now-600000, cwd:"C:\\Users\\braun\\Desktop\\marketing-factory", gitBranch:"main", sessionId:"s1", filePath:"x", managed:false, approx:false },
+        { id:"a3", kind:"agent", parentId:"s1", title:"Vérifier la règle BLOCK côté edge", subtitle:"Explore",
+          model:"claude-haiku-4-5", modelFamily:"haiku", status:"idle", working:false, activity:"Token match EXACT confirmé sur tags.",
+          activityKind:"text", tokens:tok(30000,7000,80000,20000), cost:cost(0.28), messageCount:8, lastTs:now-220000,
+          startedTs:now-500000, cwd:"C:\\Users\\braun\\Desktop\\marketing-factory", gitBranch:"main", sessionId:"s1", filePath:"x", managed:false, approx:false },
+        { id:"s2", kind:"session", parentId:null, title:"Sync barometre marché coiffure (INSEE + France Travail)",
+          subtitle:"marketing-factory", model:"claude-sonnet-4-6", modelFamily:"sonnet", status:"idle", working:false,
+          activity:"Le script de sync trimestriel est prêt et testé en dry-run.", activityKind:"text",
+          tokens:tok(120000,38000,300000,90000), cost:cost(0.73), messageCount:31, lastTs:now-1400000, startedTs:now-5400000,
+          cwd:"C:\\Users\\braun\\Desktop\\marketing-factory", gitBranch:"main", sessionId:"s2", filePath:"x", managed:false, approx:false },
+        { id:"a4", kind:"agent", parentId:"s2", title:"Research séries publiques France Travail", subtitle:"general-purpose",
+          model:"claude-opus-4-8", modelFamily:"opus", status:"done", working:false, activity:"Synthèse complète livrée.",
+          activityKind:"text", tokens:tok(60000,14000,200000,40000), cost:cost(1.10), messageCount:14, lastTs:now-1800000,
+          startedTs:now-2200000, cwd:"C:\\Users\\braun\\Desktop\\marketing-factory", gitBranch:"main", sessionId:"s2", filePath:"x", managed:false, approx:false }
+      ]
+    };
+    window.postMessage({ type:"config", workspaceCwd: state.workspaceCwd }, "*");
+    window.postMessage({ type:"state", state }, "*");
+  </script>
+</body>
+</html>
