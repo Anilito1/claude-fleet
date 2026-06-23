@@ -22,6 +22,7 @@
   const tweens = new Map();
   let layoutNodes = []; // [{id, el, kind, status, parentId, capOut, bx, by, r, cx, cy, ax, ay, sx, sy, px, py, pinned}]
   let layoutById = new Map();
+  let linksOffL = 0, linksOffT = 0; // cached at render time (avoid per-frame layout reads)
   const manualPos = new Map(); // id -> {x, y} when user-dragged
   const NODE_W = 150, SESSION_R = 33, AGENT_R = 23, HUB_R = 27;
   const HUB_ID = "__hub__";
@@ -486,11 +487,19 @@
     bubblesEl.style.height = maxBottom + 30 + "px";
     layoutNodes = newLayout;
     layoutById = byId;
+
+    // size the link layer + cache offsets ONCE here (not every animation frame)
+    linksEl.style.width = stageEl.clientWidth + "px";
+    linksEl.style.height = stageEl.scrollHeight + "px";
+    linksOffL = bubblesEl.offsetLeft;
+    linksOffT = bubblesEl.offsetTop;
+
     syncDrawer();
   }
 
   // ---------- floating animation loop ----------
   function frame(t) {
+    if (!layoutNodes.length) { requestAnimationFrame(frame); return; }
     const tt = t * 0.001;
     for (const ln of layoutNodes) {
       const ox = Math.sin(tt * ln.sx + ln.px) * ln.ax;
@@ -520,11 +529,9 @@
     }
   }
 
-  // ---------- connectors (follow the floating orbs) ----------
+  // ---------- connectors (follow the floating orbs) — path updates only, no layout reads ----------
   function drawLinks() {
-    linksEl.style.width = stageEl.clientWidth + "px";
-    linksEl.style.height = stageEl.scrollHeight + "px";
-    const offL = bubblesEl.offsetLeft, offT = bubblesEl.offsetTop;
+    const offL = linksOffL, offT = linksOffT;
     const present = new Set();
     for (const ln of layoutNodes) {
       if (!ln.parentId) continue;
