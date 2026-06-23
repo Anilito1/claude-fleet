@@ -18,9 +18,36 @@
   const bubbleCache = new Map(); // id -> .node element
   const linkCache = new Map(); // agentId -> <path>
   const tweens = new Map();
-  let layoutNodes = []; // [{id, el, kind, status, parentId, bx, by, r, cx, cy, ax, ay, sx, sy, px, py}]
+  let layoutNodes = []; // [{id, el, kind, status, parentId, capOut, bx, by, r, cx, cy, ax, ay, sx, sy, px, py, pinned}]
   let layoutById = new Map();
-  const NODE_W = 150, SESSION_R = 33, AGENT_R = 23;
+  const manualPos = new Map(); // id -> {x, y} when user-dragged
+  const NODE_W = 150, SESSION_R = 33, AGENT_R = 23, HUB_R = 27;
+  const HUB_ID = "__hub__";
+
+  // little animated character drawn inside each orb (pose set via [data-pose])
+  const AVATAR_SVG =
+    '<svg class="avatar" viewBox="0 0 48 48" aria-hidden="true">' +
+    '<g class="av-seat"><rect x="12" y="31" width="24" height="8" rx="4"/><rect x="12" y="24" width="5" height="11" rx="2.5"/><rect x="31" y="24" width="5" height="11" rx="2.5"/></g>' +
+    '<g class="av-desk"><rect class="av-deskbar" x="13" y="34" width="22" height="2.4" rx="1.2"/><rect class="av-laptop" x="17" y="26" width="14" height="9" rx="1.6"/><rect class="av-screen" x="18.4" y="27.3" width="11.2" height="6.4" rx="1"/></g>' +
+    '<g class="av-fig"><ellipse class="av-torso" cx="24" cy="28" rx="7" ry="8"/><rect class="av-arm av-arm-l" x="15" y="25" width="7" height="3" rx="1.5"/><rect class="av-arm av-arm-r" x="26" y="25" width="7" height="3" rx="1.5"/><circle class="av-head" cx="24" cy="15.5" r="6"/></g>' +
+    '<g class="av-think"><circle class="d1" cx="33" cy="12" r="1.4"/><circle class="d2" cx="37" cy="8.5" r="1.8"/><circle class="d3" cx="41.5" cy="5.5" r="2.2"/></g>' +
+    '<g class="av-check"><circle cx="35" cy="13" r="6"/><path d="M32 13 l2 2 l4 -4.2"/></g>' +
+    "</svg>";
+  const HUB_SVG =
+    '<svg class="avatar hub-av" viewBox="0 0 48 48" aria-hidden="true">' +
+    '<rect class="hub-mon" x="11" y="13" width="26" height="18" rx="2.5"/>' +
+    '<rect class="hub-scr" x="13.5" y="15.5" width="21" height="13" rx="1.2"/>' +
+    '<rect class="hub-stand" x="22" y="31" width="4" height="4"/>' +
+    '<rect class="hub-base" x="17" y="35" width="14" height="2.4" rx="1.2"/>' +
+    "</svg>";
+
+  function poseOf(node) {
+    if (node.kind === "hub") return "hub";
+    if (node.status === "done") return "done";
+    if (node.working && node.activityKind === "thinking") return "think";
+    if (node.working) return "type";
+    return "sit"; // live-but-waiting or idle
+  }
 
   // ---------- format ----------
   function fmtTokens(n) {
@@ -88,24 +115,24 @@
     tweens.set(el, requestAnimationFrame(step));
   }
 
-  // ---------- node (floating orb + caption) ----------
+  // ---------- node (floating orb + animated character + caption) ----------
   function createNode(node) {
     const el = document.createElement("div");
     el.className = "node " + node.kind;
     el.dataset.id = node.id;
     el.style.transform = "translate3d(-9999px,-9999px,0)"; // hidden until first layout frame
-    el.innerHTML = `
-      <div class="orb"><span class="orb-ico"></span></div>
-      <div class="caption">
-        <div class="cap-title"></div>
-        <div class="cap-act"><span class="ca-ico"></span><span class="ca-text"></span></div>
-        <div class="cap-meta">
-          <span class="cap-tag"></span>
-          <span class="cap-cost" data-val="0">$0.000</span>
-          <span class="cap-managed hidden" title="Pilotée par Fleet">●</span>
-        </div>
-      </div>`;
-    el.addEventListener("click", () => openDrawer(node.id));
+    const inner = node.kind === "hub" ? HUB_SVG : AVATAR_SVG;
+    el.innerHTML =
+      '<div class="orb">' + inner + '</div>' +
+      '<div class="caption">' +
+      '<div class="cap-title"></div>' +
+      '<div class="cap-act"><span class="ca-ico"></span><span class="ca-text"></span></div>' +
+      '<div class="cap-meta">' +
+      '<span class="cap-tag"></span>' +
+      '<span class="cap-cost" data-val="0">$0.000</span>' +
+      '<span class="cap-managed hidden" title="Pilotée par Fleet">●</span>' +
+      "</div></div>";
+    attachDrag(el, node.id);
     return el;
   }
 
@@ -113,14 +140,20 @@
     el.className =
       "node " + node.kind + " " + node.status +
       (node.working ? " working" : "") +
-      (node.managed && node.kind === "session" ? " managed" : "");
-    const ico = actIcon(node.status === "done" ? "done" : node.activityKind);
-    el.querySelector(".orb-ico").textContent = ico;
+      (node.managed && node.kind === "session" ? " managed" : "") +
+      (manualPos.has(node.id) ? " pinned" : "");
+    el.dataset.pose = poseOf(node);
     el.querySelector(".cap-title").textContent = node.title;
     const act = el.querySelector(".cap-act");
     act.className = "cap-act " + node.activityKind;
-    el.querySelector(".ca-ico").textContent = ico;
+    el.querySelector(".ca-ico").textContent = actIcon(node.status === "done" ? "done" : node.activityKind);
     el.querySelector(".ca-text").textContent = node.activity;
+
+    if (node.kind === "hub") {
+      el.querySelector(".cap-tag").textContent = "";
+      el.querySelector(".cap-cost").textContent = "";
+      return;
+    }
     el.querySelector(".cap-tag").textContent =
       node.kind === "agent" ? node.subtitle : shortModel(node.model);
     const costEl = el.querySelector(".cap-cost");
@@ -137,6 +170,46 @@
     updateNode(el, node);
     return el;
   }
+
+  // ---------- drag (hold + move) / click ----------
+  let drag = null;
+  function attachDrag(el, id) {
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const ln = layoutById.get(id);
+      const br = bubblesEl.getBoundingClientRect();
+      drag = {
+        id, el, moved: false,
+        sx: e.clientX, sy: e.clientY,
+        offX: (ln ? ln.cx : 0) - (e.clientX - br.left),
+        offY: (ln ? ln.cy : 0) - (e.clientY - br.top),
+      };
+      el.setPointerCapture && el.setPointerCapture(e.pointerId);
+      el.classList.add("dragging");
+    });
+  }
+  window.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    if (!drag.moved && Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) < 4) return;
+    drag.moved = true;
+    const br = bubblesEl.getBoundingClientRect();
+    const cx = e.clientX - br.left + drag.offX;
+    const cy = e.clientY - br.top + drag.offY;
+    manualPos.set(drag.id, { x: cx, y: cy });
+    const ln = layoutById.get(drag.id);
+    if (ln) { ln.bx = cx; ln.by = cy; ln.cx = cx; ln.cy = cy; ln.ax = 0; ln.ay = 0; ln.pinned = true; }
+  });
+  window.addEventListener("pointerup", () => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    d.el.classList.remove("dragging");
+    if (!d.moved) {
+      if (d.id === HUB_ID) vscode.postMessage({ type: "newSession", cwd: workspaceCwd });
+      else openDrawer(d.id);
+    } else {
+      d.el.classList.add("pinned");
+    }
+  });
 
   // ---------- filter ----------
   function samePath(a, b) {
@@ -200,17 +273,20 @@
     el.classList.add("leaving");
     setTimeout(() => el.remove(), 280);
   }
-  function pushLayout(arr, byId, node, el, bx, by, r, parentId) {
+  function pushLayout(arr, byId, node, el, bx, by, r, parentId, capOut) {
     const h = hashStr(node.id);
+    const m = manualPos.get(node.id);
+    const baseAx = node.kind === "session" ? 4.5 : node.kind === "hub" ? 3 : 6.5;
+    const baseAy = node.kind === "session" ? 5.5 : node.kind === "hub" ? 3.5 : 7.5;
     const ln = {
-      id: node.id, el, kind: node.kind, status: node.status, parentId: parentId || null,
-      bx, by, r, cx: bx, cy: by,
-      ax: node.kind === "session" ? 4.5 : 6.5,
-      ay: node.kind === "session" ? 5.5 : 7.5,
-      sx: 0.45 + (h % 35) / 100,
-      sy: 0.4 + ((h >> 3) % 35) / 100,
-      px: (h % 628) / 100,
-      py: ((h >> 5) % 628) / 100,
+      id: node.id, el, kind: node.kind, status: node.status,
+      parentId: parentId || null, capOut: capOut || 0,
+      bx: m ? m.x : bx, by: m ? m.y : by, r,
+      cx: m ? m.x : bx, cy: m ? m.y : by,
+      ax: m ? 0 : baseAx, ay: m ? 0 : baseAy,
+      sx: 0.45 + (h % 35) / 100, sy: 0.4 + ((h >> 3) % 35) / 100,
+      px: (h % 628) / 100, py: ((h >> 5) % 628) / 100,
+      pinned: !!m,
     };
     arr.push(ln);
     byId.set(node.id, ln);
@@ -233,49 +309,80 @@
     if (sessions.length === 0) setEmptyText();
 
     const desired = new Set(nodes.map((n) => n.id));
-    for (const id of [...bubbleCache.keys()]) if (!desired.has(id)) removeNode(id);
+    desired.add(HUB_ID);
+    for (const id of [...bubbleCache.keys()]) {
+      if (!desired.has(id)) { removeNode(id); manualPos.delete(id); }
+    }
+
+    const newLayout = [];
+    const byId = new Map();
+    if (sessions.length === 0) {
+      removeNode(HUB_ID);
+      layoutNodes = newLayout; layoutById = byId;
+      syncDrawer();
+      return;
+    }
 
     const W = Math.max(320, bubblesEl.clientWidth || stageEl.clientWidth || 360);
     const SESSION_BLOCK = SESSION_R * 2 + 12 + 46;
     const AGENT_BLOCK = AGENT_R * 2 + 10 + 46;
     const AGENT_SPACING = NODE_W + 16;
-    const BAND_GAP = 48;
 
-    const newLayout = [];
-    const byId = new Map();
-    let y = 14;
-
-    for (const s of sessions) {
-      const sEl = ensureNode(s);
-      pushLayout(newLayout, byId, s, sEl, W / 2, y + SESSION_R + 6, SESSION_R);
-      let bandH = SESSION_BLOCK;
-
+    // measure a column per session (session + its agent cluster)
+    const cols = sessions.map((s) => {
       const agents = (agentsByParent.get(s.id) || []).sort(
         (a, b) => statusRank(a) - statusRank(b) || a.startedTs - b.startedTs
       );
-      if (agents.length) {
-        const perRow = Math.max(1, Math.min(agents.length, Math.floor((W - 24) / AGENT_SPACING)));
-        const rows = Math.ceil(agents.length / perRow);
-        const agentsTop = y + SESSION_BLOCK + 24;
-        agents.forEach((a, i) => {
-          const row = Math.floor(i / perRow);
-          const colCount = row < rows - 1 ? perRow : agents.length - perRow * (rows - 1);
-          const col = i % perRow;
+      const perRow = Math.max(1, Math.min(agents.length || 1, Math.floor((W - 24) / AGENT_SPACING)));
+      const agentRowW = Math.min(agents.length, perRow) * AGENT_SPACING;
+      const colW = Math.max(NODE_W + 30, agentRowW || 0);
+      return { s, agents, perRow, colW };
+    });
+    const totalW = cols.reduce((a, c) => a + c.colW, 0);
+    const contentW = Math.max(W, totalW + 24);
+
+    // root "machine" hub, connecting all sessions
+    const anyLive = sessions.some((s) => s.status === "live");
+    const hub = {
+      id: HUB_ID, kind: "hub", title: "Ma machine", subtitle: "", activity: "",
+      activityKind: "idle", status: anyLive ? "live" : "idle", working: false,
+      model: "", cost: { total: 0 },
+      tokens: { input: 0, output: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0 },
+      managed: false, approx: false,
+    };
+    const hubY = 20 + HUB_R;
+    pushLayout(newLayout, byId, hub, ensureNode(hub), contentW / 2, hubY, HUB_R, null, 42);
+
+    const sessionsY = hubY + HUB_R + 62;
+    let x = Math.max(12, (contentW - totalW) / 2);
+    let maxBottom = sessionsY + SESSION_R;
+
+    for (const c of cols) {
+      const sx = x + c.colW / 2, sy = sessionsY + SESSION_R;
+      pushLayout(newLayout, byId, c.s, ensureNode(c.s), sx, sy, SESSION_R, HUB_ID, 58);
+      if (c.agents.length) {
+        const rows = Math.ceil(c.agents.length / c.perRow);
+        const agentsTop = sy + SESSION_BLOCK + 22;
+        c.agents.forEach((a, i) => {
+          const row = Math.floor(i / c.perRow);
+          const colCount = row < rows - 1 ? c.perRow : c.agents.length - c.perRow * (rows - 1);
+          const col = i % c.perRow;
           const rowW = colCount * AGENT_SPACING;
-          const startX = W / 2 - rowW / 2 + AGENT_SPACING / 2;
-          const ax = startX + col * AGENT_SPACING;
+          const ax = sx - rowW / 2 + AGENT_SPACING / 2 + col * AGENT_SPACING;
           const ay = agentsTop + row * AGENT_BLOCK + AGENT_R;
-          pushLayout(newLayout, byId, a, ensureNode(a), ax, ay, AGENT_R, s.id);
+          pushLayout(newLayout, byId, a, ensureNode(a), ax, ay, AGENT_R, c.s.id, 0);
+          maxBottom = Math.max(maxBottom, ay + AGENT_R + 46);
         });
-        bandH = SESSION_BLOCK + 24 + rows * AGENT_BLOCK;
+      } else {
+        maxBottom = Math.max(maxBottom, sy + SESSION_BLOCK);
       }
-      y += bandH + BAND_GAP;
+      x += c.colW;
     }
 
-    bubblesEl.style.height = y + 20 + "px";
+    bubblesEl.style.width = contentW + "px";
+    bubblesEl.style.height = maxBottom + 30 + "px";
     layoutNodes = newLayout;
     layoutById = byId;
-
     syncDrawer();
   }
 
@@ -317,11 +424,11 @@
     const offL = bubblesEl.offsetLeft, offT = bubblesEl.offsetTop;
     const present = new Set();
     for (const ln of layoutNodes) {
-      if (ln.kind !== "agent") continue;
+      if (!ln.parentId) continue;
       const p = layoutById.get(ln.parentId);
       if (!p) continue;
       // branch out from BELOW the parent's caption (not through its text)
-      const x1 = p.cx + offL, y1 = p.cy + p.r + 58 + offT;
+      const x1 = p.cx + offL, y1 = p.cy + p.r + (p.capOut || 0) + offT;
       const x2 = ln.cx + offL, y2 = ln.cy - ln.r + offT;
       const dy = Math.max(12, (y2 - y1) / 2);
       let path = linkCache.get(ln.id);
