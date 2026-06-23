@@ -24,7 +24,7 @@
         {
           "id": "agentObservatory",
           "title": "Agent Observatory",
-          "icon": "resources/activity.svg"
+          "icon": "resources/activity.png"
         }
       ]
     },
@@ -34,7 +34,7 @@
           "type": "webview",
           "id": "agentObservatory.view",
           "name": "Observatory",
-          "icon": "resources/activity.svg"
+          "icon": "resources/activity.png"
         }
       ]
     },
