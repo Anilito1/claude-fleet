@@ -1,6 +1,6 @@
 {
   "name": "coding-agent-observatory",
-  "displayName": "Coding Agent Observatory",
+  "displayName": "Agent Observatory",
   "description": "See your AI coding agents working — live. Sessions and sub-agents as animated characters, with live token usage and cost.",
   "version": "0.1.0",
   "publisher": "Anilito1",

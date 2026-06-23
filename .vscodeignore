@@ -9,6 +9,5 @@ tsconfig.json
 .github/**
 media/*.png
 media/preview.html
-media/avatars/**
 CONTRIBUTING.md
 .playwright-mcp/**
