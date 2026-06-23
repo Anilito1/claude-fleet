@@ -15,10 +15,12 @@
   let selectedId = null;
   let drawerBuiltFor = null; // node id the drawer DOM was built for (avoid rebuilding -> avoid tail flicker)
 
-  const bubbleCache = new Map(); // id -> bubble element
-  const groupCache = new Map(); // sessionId -> { group, head, agentsRow }
+  const bubbleCache = new Map(); // id -> .node element
   const linkCache = new Map(); // agentId -> <path>
   const tweens = new Map();
+  let layoutNodes = []; // [{id, el, kind, status, parentId, bx, by, r, cx, cy, ax, ay, sx, sy, px, py}]
+  let layoutById = new Map();
+  const NODE_W = 150, SESSION_R = 33, AGENT_R = 23;
 
   // ---------- format ----------
   function fmtTokens(n) {
@@ -86,56 +88,53 @@
     tweens.set(el, requestAnimationFrame(step));
   }
 
-  // ---------- bubble ----------
-  function createBubble(node) {
+  // ---------- node (floating orb + caption) ----------
+  function createNode(node) {
     const el = document.createElement("div");
-    el.className = "bubble " + node.kind;
+    el.className = "node " + node.kind;
     el.dataset.id = node.id;
+    el.style.transform = "translate3d(-9999px,-9999px,0)"; // hidden until first layout frame
     el.innerHTML = `
-      <div class="b-top">
-        <span class="dot"></span>
-        ${node.kind === "agent" ? '<span class="chip agenttype"></span>' : ""}
-        <span class="chip model"></span>
-        <span class="b-spacer"></span>
-        <span class="managed-dot hidden" title="Pilotée par Fleet"></span>
-        <span class="b-cost" data-val="0">$0.000</span>
-      </div>
-      <div class="b-title"></div>
-      <div class="b-activity"><span class="act-ico"></span><span class="act-text"></span></div>
-      <div class="work-bar"></div>`;
+      <div class="orb"><span class="orb-ico"></span></div>
+      <div class="caption">
+        <div class="cap-title"></div>
+        <div class="cap-act"><span class="ca-ico"></span><span class="ca-text"></span></div>
+        <div class="cap-meta">
+          <span class="cap-tag"></span>
+          <span class="cap-cost" data-val="0">$0.000</span>
+          <span class="cap-managed hidden" title="Pilotée par Fleet">●</span>
+        </div>
+      </div>`;
     el.addEventListener("click", () => openDrawer(node.id));
     return el;
   }
 
-  function updateBubble(el, node) {
-    el.querySelector(".dot").className = "dot " + node.status;
-    el.classList.toggle("working", !!node.working);
-    el.classList.toggle("live-emph", node.status === "live");
-
-    if (node.kind === "agent") {
-      const at = el.querySelector(".agenttype");
-      if (at) at.textContent = node.subtitle;
-    }
-    el.querySelector(".model").textContent = shortModel(node.model);
-    el.querySelector(".b-title").textContent = node.title;
-
-    const act = el.querySelector(".b-activity");
-    act.className = "b-activity " + node.activityKind;
-    el.querySelector(".act-ico").textContent = actIcon(node.status === "done" ? "done" : node.activityKind);
-    el.querySelector(".act-text").textContent = node.activity;
-
-    const costEl = el.querySelector(".b-cost");
+  function updateNode(el, node) {
+    el.className =
+      "node " + node.kind + " " + node.status +
+      (node.working ? " working" : "") +
+      (node.managed && node.kind === "session" ? " managed" : "");
+    const ico = actIcon(node.status === "done" ? "done" : node.activityKind);
+    el.querySelector(".orb-ico").textContent = ico;
+    el.querySelector(".cap-title").textContent = node.title;
+    const act = el.querySelector(".cap-act");
+    act.className = "cap-act " + node.activityKind;
+    el.querySelector(".ca-ico").textContent = ico;
+    el.querySelector(".ca-text").textContent = node.activity;
+    el.querySelector(".cap-tag").textContent =
+      node.kind === "agent" ? node.subtitle : shortModel(node.model);
+    const costEl = el.querySelector(".cap-cost");
     costEl.classList.toggle("approx", !!node.approx);
-    costEl.title = node.approx ? "Coût partiel (transcript volumineux lu depuis la fin)" : "";
     tween(costEl, node.cost.total, fmtCost);
-
-    el.querySelector(".managed-dot").classList.toggle("hidden", !(node.managed && node.kind === "session"));
+    el.querySelector(".cap-managed").classList.toggle(
+      "hidden", !(node.managed && node.kind === "session")
+    );
   }
 
-  function ensureBubble(node) {
+  function ensureNode(node) {
     let el = bubbleCache.get(node.id);
-    if (!el) { el = createBubble(node); bubbleCache.set(node.id, el); }
-    updateBubble(el, node);
+    if (!el) { el = createNode(node); bubbleCache.set(node.id, el); bubblesEl.appendChild(el); }
+    updateNode(el, node);
     return el;
   }
 
@@ -189,19 +188,32 @@
         : "<p>Aucune session récente</p><span>Lance une session Claude Code — elle apparaîtra ici.</span>");
   }
 
-  // ---------- DOM reconciliation (no full rebuild -> no flicker) ----------
-  function placeInOrder(container, orderedEls) {
-    for (let i = 0; i < orderedEls.length; i++) {
-      const el = orderedEls[i];
-      if (container.children[i] !== el) container.insertBefore(el, container.children[i] || null);
-    }
+  function hashStr(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
   }
-  function removeBubble(id) {
+  function removeNode(id) {
     const el = bubbleCache.get(id);
     if (!el) return;
     bubbleCache.delete(id);
     el.classList.add("leaving");
-    setTimeout(() => el.remove(), 260);
+    setTimeout(() => el.remove(), 280);
+  }
+  function pushLayout(arr, byId, node, el, bx, by, r, parentId) {
+    const h = hashStr(node.id);
+    const ln = {
+      id: node.id, el, kind: node.kind, status: node.status, parentId: parentId || null,
+      bx, by, r, cx: bx, cy: by,
+      ax: node.kind === "session" ? 4.5 : 6.5,
+      ay: node.kind === "session" ? 5.5 : 7.5,
+      sx: 0.45 + (h % 35) / 100,
+      sy: 0.4 + ((h >> 3) % 35) / 100,
+      px: (h % 628) / 100,
+      py: ((h >> 5) % 628) / 100,
+    };
+    arr.push(ln);
+    byId.set(node.id, ln);
   }
 
   function render() {
@@ -220,50 +232,68 @@
     emptyEl.classList.toggle("hidden", sessions.length > 0);
     if (sessions.length === 0) setEmptyText();
 
-    const desiredBubbleIds = new Set(nodes.map((n) => n.id));
-    const desiredSessionIds = new Set(sessions.map((s) => s.id));
+    const desired = new Set(nodes.map((n) => n.id));
+    for (const id of [...bubbleCache.keys()]) if (!desired.has(id)) removeNode(id);
 
-    // remove vanished bubbles
-    for (const id of [...bubbleCache.keys()]) if (!desiredBubbleIds.has(id)) removeBubble(id);
-    // remove vanished groups
-    for (const [sid, g] of [...groupCache.entries()]) {
-      if (!desiredSessionIds.has(sid)) { g.group.remove(); groupCache.delete(sid); }
-    }
+    const W = Math.max(320, bubblesEl.clientWidth || stageEl.clientWidth || 360);
+    const SESSION_BLOCK = SESSION_R * 2 + 12 + 46;
+    const AGENT_BLOCK = AGENT_R * 2 + 10 + 46;
+    const AGENT_SPACING = NODE_W + 16;
+    const BAND_GAP = 48;
 
-    const groupEls = [];
+    const newLayout = [];
+    const byId = new Map();
+    let y = 14;
+
     for (const s of sessions) {
-      let g = groupCache.get(s.id);
-      if (!g) {
-        const group = document.createElement("div");
-        group.className = "group";
-        group.dataset.session = s.id;
-        const head = document.createElement("div");
-        head.className = "group-head";
-        const agentsRow = document.createElement("div");
-        agentsRow.className = "group-agents";
-        group.appendChild(head);
-        group.appendChild(agentsRow);
-        g = { group, head, agentsRow };
-        groupCache.set(s.id, g);
-      }
-      // head bubble
-      const headBubble = ensureBubble(s);
-      if (g.head.firstChild !== headBubble) placeInOrder(g.head, [headBubble]);
+      const sEl = ensureNode(s);
+      pushLayout(newLayout, byId, s, sEl, W / 2, y + SESSION_R + 6, SESSION_R);
+      let bandH = SESSION_BLOCK;
 
-      // agents row
       const agents = (agentsByParent.get(s.id) || []).sort(
         (a, b) => statusRank(a) - statusRank(b) || a.startedTs - b.startedTs
       );
-      const agentEls = agents.map((a) => ensureBubble(a));
-      placeInOrder(g.agentsRow, agentEls);
-
-      groupEls.push(g.group);
+      if (agents.length) {
+        const perRow = Math.max(1, Math.min(agents.length, Math.floor((W - 24) / AGENT_SPACING)));
+        const rows = Math.ceil(agents.length / perRow);
+        const agentsTop = y + SESSION_BLOCK + 24;
+        agents.forEach((a, i) => {
+          const row = Math.floor(i / perRow);
+          const colCount = row < rows - 1 ? perRow : agents.length - perRow * (rows - 1);
+          const col = i % perRow;
+          const rowW = colCount * AGENT_SPACING;
+          const startX = W / 2 - rowW / 2 + AGENT_SPACING / 2;
+          const ax = startX + col * AGENT_SPACING;
+          const ay = agentsTop + row * AGENT_BLOCK + AGENT_R;
+          pushLayout(newLayout, byId, a, ensureNode(a), ax, ay, AGENT_R, s.id);
+        });
+        bandH = SESSION_BLOCK + 24 + rows * AGENT_BLOCK;
+      }
+      y += bandH + BAND_GAP;
     }
-    placeInOrder(bubblesEl, groupEls);
 
-    requestAnimationFrame(drawLinks);
+    bubblesEl.style.height = y + 20 + "px";
+    layoutNodes = newLayout;
+    layoutById = byId;
+
     syncDrawer();
   }
+
+  // ---------- floating animation loop ----------
+  function frame(t) {
+    const tt = t * 0.001;
+    for (const ln of layoutNodes) {
+      const ox = Math.sin(tt * ln.sx + ln.px) * ln.ax;
+      const oy = Math.sin(tt * ln.sy + ln.py) * ln.ay;
+      ln.cx = ln.bx + ox;
+      ln.cy = ln.by + oy;
+      ln.el.style.transform =
+        "translate3d(" + (ln.cx - NODE_W / 2).toFixed(1) + "px," + (ln.cy - ln.r).toFixed(1) + "px,0)";
+    }
+    drawLinks();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 
   // Rebuild the drawer DOM only when the selected node changes; otherwise update
   // live values in place so the "Flux en direct" list is never wiped (no flicker).
@@ -280,37 +310,36 @@
     }
   }
 
-  // ---------- connectors (reuse paths) ----------
+  // ---------- connectors (follow the floating orbs) ----------
   function drawLinks() {
     linksEl.style.width = stageEl.clientWidth + "px";
     linksEl.style.height = stageEl.scrollHeight + "px";
-    const sr = stageEl.getBoundingClientRect();
-    const ox = -sr.left + stageEl.scrollLeft;
-    const oy = -sr.top + stageEl.scrollTop;
-
-    const nodes = computeNodes();
+    const offL = bubblesEl.offsetLeft, offT = bubblesEl.offsetTop;
     const present = new Set();
-    for (const n of nodes) {
-      if (n.kind !== "agent") continue;
-      const childEl = bubbleCache.get(n.id);
-      const parentEl = bubbleCache.get(n.parentId);
-      if (!childEl || !parentEl || !childEl.isConnected || !parentEl.isConnected) continue;
-      const c = childEl.getBoundingClientRect();
-      const p = parentEl.getBoundingClientRect();
-      if (!c.width || !p.width) continue;
-      const x1 = p.left + p.width / 2 + ox, y1 = p.bottom + oy;
-      const x2 = c.left + c.width / 2 + ox, y2 = c.top + oy;
-      const dy = Math.max(16, (y2 - y1) / 2);
-      let path = linkCache.get(n.id);
+    for (const ln of layoutNodes) {
+      if (ln.kind !== "agent") continue;
+      const p = layoutById.get(ln.parentId);
+      if (!p) continue;
+      // branch out from BELOW the parent's caption (not through its text)
+      const x1 = p.cx + offL, y1 = p.cy + p.r + 58 + offT;
+      const x2 = ln.cx + offL, y2 = ln.cy - ln.r + offT;
+      const dy = Math.max(12, (y2 - y1) / 2);
+      let path = linkCache.get(ln.id);
       if (!path) {
         path = document.createElementNS("http://www.w3.org/2000/svg", "path");
         linksEl.appendChild(path);
-        linkCache.set(n.id, path);
+        linkCache.set(ln.id, path);
       }
-      path.setAttribute("d", `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`);
-      const cls = "link" + (n.status === "live" ? " live" : "");
+      path.setAttribute(
+        "d",
+        "M " + x1.toFixed(1) + " " + y1.toFixed(1) +
+        " C " + x1.toFixed(1) + " " + (y1 + dy).toFixed(1) + ", " +
+        x2.toFixed(1) + " " + (y2 - dy).toFixed(1) + ", " +
+        x2.toFixed(1) + " " + y2.toFixed(1)
+      );
+      const cls = "link" + (ln.status === "live" ? " live" : "");
       if (path.getAttribute("class") !== cls) path.setAttribute("class", cls);
-      present.add(n.id);
+      present.add(ln.id);
     }
     for (const [id, path] of [...linkCache.entries()]) {
       if (!present.has(id)) { path.remove(); linkCache.delete(id); }
@@ -497,8 +526,11 @@
     else if (msg.type === "tail") { renderTail(msg.nodeId, msg.lines); }
   });
 
-  window.addEventListener("resize", () => requestAnimationFrame(drawLinks));
-  stageEl.addEventListener("scroll", () => requestAnimationFrame(drawLinks));
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(render, 120);
+  });
 
   vscode.postMessage({ type: "ready" });
 })();
