@@ -49,10 +49,10 @@
 
   function poseOf(node) {
     if (node.kind === "hub") return "hub";
-    if (node.status === "done") return "done";
-    if (node.working && node.activityKind === "thinking") return "think";
-    if (node.working || node.activityKind === "tool_result") return "type"; // mid-task = still working
-    return "sit"; // genuinely waiting / idle
+    // only two character clips exist: working vs chilling.
+    // anything active (incl. thinking / tool result) = working; waiting/idle/done = chilling.
+    if (node.working || node.activityKind === "tool_result") return "type";
+    return "sit";
   }
   // anti-flicker: only switch to the calm "sit" pose after a sustained idle (~3s),
   // so brief gaps during a tool burst don't flash the chilling clip.
