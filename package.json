@@ -3,7 +3,7 @@
   "displayName": "Agent Observatory",
   "description": "See your Claude Code agents working — live. Sessions & sub-agents as animated characters, with live token usage and $ cost.",
   "version": "0.1.0",
-  "publisher": "anilito1",
+  "publisher": "Anilito1",
   "license": "MIT",
   "icon": "resources/icon.png",
   "galleryBanner": { "color": "#0a0b0e", "theme": "dark" },
