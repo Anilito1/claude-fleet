@@ -21,6 +21,7 @@ export interface FileAggregate {
   capped: boolean; // initial read was truncated to the tail of a large file -> totals are partial
   recentTail: TailLine[]; // rolling window of recent human-readable events
   events: UsageEvent[]; // per-assistant-message usage, for period filtering
+  seenMsgIds: Set<string>; // message ids already counted (transcripts duplicate each message)
 }
 
 export interface UsageEvent {
@@ -51,6 +52,7 @@ export function createAggregate(): FileAggregate {
     capped: false,
     recentTail: [],
     events: [],
+    seenMsgIds: new Set(),
   };
 }
 
@@ -154,7 +156,11 @@ export function processLine(agg: FileAggregate, o: any): void {
     if (msg.model) agg.model = msg.model;
     if (o.cwd) agg.cwd = o.cwd;
     if (o.gitBranch) agg.gitBranch = o.gitBranch;
-    if (msg.usage) {
+    // Claude Code writes each assistant message to the transcript multiple times
+    // (streaming partials + final). Count usage ONCE per message id.
+    const mid = msg.id;
+    if (msg.usage && !(mid && agg.seenMsgIds.has(mid))) {
+      if (mid) agg.seenMsgIds.add(mid);
       const u = extractUsage(msg.usage);
       addTotals(agg.tokens, u);
       agg.messageCount++;

@@ -39,9 +39,9 @@ Defaults follow Anthropic's public rate structure (cache write 5 min = 1.25× in
 
 ```jsonc
 "agentObservatory.pricing": {
-  "opus":   { "input": 15, "output": 75, "cacheWrite5m": 18.75, "cacheWrite1h": 30, "cacheRead": 1.5 },
-  "sonnet": { "input": 3,  "output": 15, "cacheWrite5m": 3.75,  "cacheWrite1h": 6,  "cacheRead": 0.3 },
-  "haiku":  { "input": 1,  "output": 5,  "cacheWrite5m": 1.25,  "cacheWrite1h": 2,  "cacheRead": 0.1 }
+  "opus":   { "input": 5, "output": 25, "cacheWrite5m": 6.25, "cacheWrite1h": 10, "cacheRead": 0.5 },
+  "sonnet": { "input": 3, "output": 15, "cacheWrite5m": 3.75, "cacheWrite1h": 6,  "cacheRead": 0.3 },
+  "haiku":  { "input": 1, "output": 5,  "cacheWrite5m": 1.25, "cacheWrite1h": 2,  "cacheRead": 0.1 }
 }
 ```
 

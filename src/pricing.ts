@@ -11,11 +11,12 @@ export interface ModelRate {
   cacheRead: number;
 }
 
+// USD per 1M tokens — current Anthropic rates (cache read = 0.1x input, write 5m = 1.25x, 1h = 2x).
 export const DEFAULT_RATES: Record<string, ModelRate> = {
-  opus: { input: 15, output: 75, cacheWrite5m: 18.75, cacheWrite1h: 30, cacheRead: 1.5 },
+  opus: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 },
   sonnet: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 },
   haiku: { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
-  fable: { input: 15, output: 75, cacheWrite5m: 18.75, cacheWrite1h: 30, cacheRead: 1.5 },
+  fable: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 },
 };
 
 export function modelFamily(model: string): string {
